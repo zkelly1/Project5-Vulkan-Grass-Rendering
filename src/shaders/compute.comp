@@ -4,6 +4,22 @@
 #define WORKGROUP_SIZE 32
 layout(local_size_x = WORKGROUP_SIZE) in;
 
+layout(set = 0, binding = 0) uniform CameraBufferObject {
+    mat4 view;
+    mat4 proj;
+} camera;
+
+layout(set = 1, binding = 0) uniform Time {
+    float deltaTime;
+    float totalTime;
+    uint culling;
+    uint simulate;
+    float windStrength;
+    float maxDistance;
+    uint distanceBuckets;
+    float orientationThreshold;
+} settings;
+
 struct Blade {
     vec4 v0;
     vec4 v1;
@@ -11,7 +27,7 @@ struct Blade {
     vec4 up;
 };
 
-layout(std430, set = 2, binding = 0) readonly buffer InputBlades {
+layout(std430, set = 2, binding = 0) buffer InputBlades {
     Blade blades[];
 } inputBlades;
 
@@ -19,24 +35,130 @@ layout(std430, set = 2, binding = 1) writeonly buffer OutputBlades {
     Blade blades[];
 } outputBlades;
 
-layout(std430, set = 2, binding = 2) writeonly buffer NumBlades {
+layout(std430, set = 2, binding = 2) buffer NumBlades {
     uint vertexCount;
     uint instanceCount;
     uint firstVertex;
     uint firstInstance;
 } numBlades;
 
+layout(set = 2, binding = 3) uniform ModelBufferObject {
+    mat4 model;
+};
+
+vec3 bladeSide(Blade blade) {
+    vec3 up = normalize(blade.up.xyz);
+    vec3 axis = abs(up.y) < 0.99 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 tangent = normalize(axis - up * dot(axis, up));
+    return cos(blade.v0.w) * tangent + sin(blade.v0.w) * cross(tangent, up);
+}
+
+void correctCurve(inout Blade blade) {
+    vec3 root = blade.v0.xyz;
+    vec3 up = normalize(blade.up.xyz);
+    float height = blade.v1.w;
+    vec3 tip = blade.v2.xyz;
+    tip -= up * min(dot(tip - root, up), 0.0);
+
+    vec3 offset = tip - root;
+    float bend = length(offset - up * dot(offset, up)) / height;
+    vec3 guide = root + up * height * max(1.0 - bend, 0.05 * max(bend, 1.0));
+    // Section 5.2: normalize the estimated quadratic Bezier arc length.
+    float curveLength = (2.0 * length(tip - root) + length(guide - root) + length(tip - guide)) / 3.0;
+    float ratio = height / max(curveLength, 0.00001);
+    blade.v1.xyz = root + ratio * (guide - root);
+    blade.v2.xyz = root + ratio * (tip - root);
+}
+
+void simulateBlade(inout Blade blade) {
+    float dt = clamp(settings.deltaTime, 0.0, 1.0 / 30.0);
+    if (settings.simulate == 0 || dt == 0.0) return;
+
+    vec3 up = normalize(blade.up.xyz);
+    vec3 front = normalize(cross(bladeSide(blade), up));
+    vec3 restTip = blade.v0.xyz + up * blade.v1.w;
+    vec3 gravity = vec3(0.0, -9.81, 0.0) + front * (0.25 * 9.81);
+    int steps = int(ceil(dt * 120.0));
+    float stepTime = dt / float(steps);
+    for (int step = 0; step < steps; ++step) {
+        float time = settings.totalTime - dt + float(step + 1) * stepTime;
+        vec3 root = blade.v0.xyz;
+        float wave = 0.65 + 0.25 * sin(1.7 * time - 0.35 * root.x + 0.2 * root.z)
+                          + 0.1 * sin(3.1 * time + 0.6 * root.z);
+        vec3 windDirection = normalize(vec3(1.0, 0.0, 0.35 + 0.2 * sin(0.7 * time)));
+        vec3 tipDirection = normalize(blade.v2.xyz - root);
+        float alignment = (1.0 - abs(dot(windDirection, tipDirection))) * abs(dot(windDirection, front));
+        float upright = clamp(dot(blade.v2.xyz - root, up) / blade.v1.w, 0.0, 1.0);
+        vec3 wind = windDirection * settings.windStrength * wave * alignment * upright;
+        vec3 recovery = (restTip - blade.v2.xyz) * blade.up.w;
+        blade.v2.xyz += (gravity + recovery + wind) * stepTime;
+        correctCurve(blade);
+    }
+}
+
+bool outsideFrustum(vec3 root, vec3 guide, vec3 tip, vec3 side, float width) {
+    // The curve lies inside its control-point hull. Test that hull as well as
+    // the midpoint, keeping blades that cross a plane between sample points.
+    vec3 midpoint = 0.25 * root + 0.5 * guide + 0.25 * tip;
+    mat4 vp = camera.proj * camera.view;
+    vec4 points[4] = vec4[4](vp * vec4(root, 1), vp * vec4(midpoint, 1),
+                             vp * vec4(tip, 1), vp * vec4(guide, 1));
+    vec4 extent = abs(vp * vec4(side * width * 0.5, 0));
+    bool outside[6] = bool[6](true, true, true, true, true, true);
+    for (int i = 0; i < 4; ++i) {
+        vec4 p = points[i];
+        float margin = 0.05 * abs(p.w);
+        outside[0] = outside[0] && p.x + p.w < -margin - extent.x - extent.w;
+        outside[1] = outside[1] && p.w - p.x < -margin - extent.x - extent.w;
+        outside[2] = outside[2] && p.y + p.w < -margin - extent.y - extent.w;
+        outside[3] = outside[3] && p.w - p.y < -margin - extent.y - extent.w;
+        // Vulkan's clip depth is [0, w].
+        outside[4] = outside[4] && p.z < -extent.z;
+        outside[5] = outside[5] && p.w - p.z < -extent.z - extent.w;
+    }
+    return outside[0] || outside[1] || outside[2] || outside[3] || outside[4] || outside[5];
+}
+
+uint hashIndex(uint value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    return value ^ (value >> 16);
+}
+
+bool visibleBlade(Blade blade, uint index) {
+    vec3 root = (model * vec4(blade.v0.xyz, 1)).xyz;
+    vec3 guide = (model * vec4(blade.v1.xyz, 1)).xyz;
+    vec3 tip = (model * vec4(blade.v2.xyz, 1)).xyz;
+    vec3 side = mat3(model) * bladeSide(blade);
+    vec3 cameraPosition = inverse(camera.view)[3].xyz;
+    vec3 toCamera = cameraPosition - root;
+    if ((settings.culling & 1u) != 0u && length(toCamera) > 0.00001) {
+        if (abs(dot(normalize(toCamera), normalize(side))) > settings.orientationThreshold) return false;
+    }
+    if ((settings.culling & 2u) != 0u && outsideFrustum(root, guide, tip, side, blade.v2.w)) return false;
+    if ((settings.culling & 4u) != 0u) {
+        vec3 up = normalize(mat3(model) * blade.up.xyz);
+        float distance = length(toCamera - up * dot(toCamera, up));
+        if (distance >= settings.maxDistance) return false;
+        uint buckets = max(settings.distanceBuckets, 1u);
+        uint bucket = uint(floor(distance / settings.maxDistance * float(buckets)));
+        // A stable hash avoids patterns and changing the subset every frame.
+        if (hashIndex(index) % buckets < bucket) return false;
+    }
+    return true;
+}
+
 void main() {
     uint index = gl_GlobalInvocationID.x;
-    uint count = uint(inputBlades.blades.length());
-    if (index >= count) return;
+    if (index >= uint(inputBlades.blades.length())) return;
 
-    // Keep every blade for the static rendering stage.
-    outputBlades.blades[index] = inputBlades.blades[index];
-    if (index == 0) {
-        numBlades.vertexCount = count;
-        numBlades.instanceCount = 1;
-        numBlades.firstVertex = 0;
-        numBlades.firstInstance = 0;
+    Blade blade = inputBlades.blades[index];
+    simulateBlade(blade);
+    inputBlades.blades[index] = blade;
+    if (visibleBlade(blade, index)) {
+        uint outputIndex = atomicAdd(numBlades.vertexCount, 1);
+        outputBlades.blades[outputIndex] = blade;
     }
 }

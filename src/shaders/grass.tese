@@ -31,11 +31,16 @@ void main() {
     // The starter places p1 at p2, so the derivative at the tip is zero.
     if (dot(tangent, tangent) < 0.000001) tangent = up[0].xyz;
 
-    vec3 side = vec3(cos(v0[0].w), 0.0, sin(v0[0].w));
+    vec3 bladeUp = normalize(up[0].xyz);
+    vec3 axis = abs(bladeUp.y) < 0.99 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 baseSide = normalize(axis - bladeUp * dot(axis, bladeUp));
+    vec3 side = cos(v0[0].w) * baseSide + sin(v0[0].w) * cross(baseSide, bladeUp);
     vec3 position = center + side * (u - 0.5) * v2[0].w * (1.0 - v);
     vec3 worldSide = mat3(model) * side;
     vec3 worldTangent = mat3(model) * tangent;
-    normal = normalize(cross(worldSide, worldTangent));
+    vec3 surfaceNormal = cross(worldSide, worldTangent);
+    if (dot(surfaceNormal, surfaceNormal) < 0.000001) surfaceNormal = cross(worldSide, mat3(model) * bladeUp);
+    normal = normalize(surfaceNormal);
     bladeHeight = v;
     gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
 }

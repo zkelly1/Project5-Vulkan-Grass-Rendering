@@ -11,6 +11,12 @@ using namespace std::chrono;
 struct Time {
     float deltaTime = 0.0f;
     float totalTime = 0.0f;
+    uint32_t culling = 7;
+    uint32_t simulate = 1;
+    float windStrength = 6.0f;
+    float maxDistance = 40.0f;
+    uint32_t distanceBuckets = 8;
+    float orientationThreshold = 0.9f;
 };
 
 class Scene {
@@ -41,5 +47,9 @@ public:
 
     VkBuffer GetTimeBuffer() const;
 
-    void UpdateTime();
+    void UpdateTime(float fixedDelta = 0.0f);
+    void SetSettings(uint32_t culling, bool simulate, float windStrength);
+    void ToggleCulling(uint32_t bit);
+    void ToggleSimulation();
+    const Time& GetSettings() const { return time; }
 };

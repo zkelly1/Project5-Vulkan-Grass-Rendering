@@ -5,20 +5,46 @@
 #include "Blades.h"
 #include "Camera.h"
 #include "Image.h"
+#include "BufferUtils.h"
+#include <fstream>
 
 static constexpr unsigned int WORKGROUP_SIZE = 32;
 
-Renderer::Renderer(Device* device, SwapChain* swapChain, Scene* scene, Camera* camera)
+Renderer::Renderer(Device* device, SwapChain* swapChain, Scene* scene, Camera* camera, bool benchmark, bool offscreen, bool lod)
   : device(device),
     logicalDevice(device->GetVkDevice()),
     swapChain(swapChain),
     scene(scene),
-    camera(camera) {
+    camera(camera), offscreen(offscreen), lod(lod) {
 
     VkSemaphoreCreateInfo semaphoreInfo = {};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     if (vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &computeFinishedSemaphore) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create compute semaphore");
+    }
+
+    if (benchmark) {
+        VkPhysicalDevice physicalDevice = device->GetInstance()->GetPhysicalDevice();
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+        timestampPeriod = properties.limits.timestampPeriod;
+        uint32_t count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, nullptr);
+        std::vector<VkQueueFamilyProperties> families(count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, families.data());
+        computeTimestampBits = families[device->GetQueueIndex(QueueFlags::Compute)].timestampValidBits;
+        graphicsTimestampBits = families[device->GetQueueIndex(QueueFlags::Graphics)].timestampValidBits;
+        if (computeTimestampBits == 0 || graphicsTimestampBits == 0) {
+            throw std::runtime_error("GPU timestamps are unavailable on the selected queues");
+        }
+        VkQueryPoolCreateInfo queryInfo = {};
+        queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        queryInfo.queryCount = 2;
+        if (vkCreateQueryPool(logicalDevice, &queryInfo, nullptr, &computeQueries) != VK_SUCCESS ||
+            vkCreateQueryPool(logicalDevice, &queryInfo, nullptr, &graphicsQueries) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create timestamp queries");
+        }
     }
 
     CreateCommandPools();
@@ -72,7 +98,7 @@ void Renderer::CreateRenderPass() {
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colorAttachment.finalLayout = offscreen ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     // Create a color attachment reference to be used with subpass
     VkAttachmentReference colorAttachmentRef = {};
@@ -109,8 +135,8 @@ void Renderer::CreateRenderPass() {
     VkSubpassDependency dependency = {};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.srcAccessMask = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
@@ -202,7 +228,7 @@ void Renderer::CreateTimeDescriptorSetLayout() {
 }
 
 void Renderer::CreateComputeDescriptorSetLayout() {
-    std::array<VkDescriptorSetLayoutBinding, 3> bindings = {};
+    std::array<VkDescriptorSetLayoutBinding, 4> bindings = {};
     for (uint32_t i = 0; i < bindings.size(); ++i) {
         bindings[i].binding = i;
         bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -210,6 +236,7 @@ void Renderer::CreateComputeDescriptorSetLayout() {
         bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     }
 
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -226,7 +253,7 @@ void Renderer::CreateGrassDescriptorSetLayout() {
     modelBinding.binding = 0;
     modelBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     modelBinding.descriptorCount = 1;
-    modelBinding.stageFlags = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+    modelBinding.stageFlags = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = 1;
@@ -240,7 +267,7 @@ void Renderer::CreateDescriptorPool() {
     uint32_t modelCount = static_cast<uint32_t>(scene->GetModels().size());
     uint32_t grassCount = static_cast<uint32_t>(scene->GetBlades().size());
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 + modelCount + grassCount }
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 + modelCount + 2 * grassCount }
     };
     if (modelCount > 0) {
         poolSizes.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, modelCount });
@@ -419,17 +446,18 @@ void Renderer::CreateComputeDescriptorSets() {
         }
 
         Blades* blades = scene->GetBlades()[i];
-        std::array<VkDescriptorBufferInfo, 3> buffers = {{
-            { blades->GetBladesBuffer(), 0, NUM_BLADES * sizeof(Blade) },
-            { blades->GetCulledBladesBuffer(), 0, NUM_BLADES * sizeof(Blade) },
-            { blades->GetNumBladesBuffer(), 0, sizeof(BladeDrawIndirect) }
+        std::array<VkDescriptorBufferInfo, 4> buffers = {{
+            { blades->GetBladesBuffer(), 0, blades->GetBladeCount() * sizeof(Blade) },
+            { blades->GetCulledBladesBuffer(), 0, blades->GetBladeCount() * sizeof(Blade) },
+            { blades->GetNumBladesBuffer(), 0, sizeof(BladeDrawIndirect) },
+            { blades->GetModelBuffer(), 0, sizeof(ModelBufferObject) }
         }};
-        std::array<VkWriteDescriptorSet, 3> writes = {};
+        std::array<VkWriteDescriptorSet, 4> writes = {};
         for (uint32_t binding = 0; binding < writes.size(); ++binding) {
             writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[binding].dstSet = computeDescriptorSets[i];
             writes[binding].dstBinding = binding;
-            writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[binding].descriptorType = binding == 3 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             writes[binding].descriptorCount = 1;
             writes[binding].pBufferInfo = &buffers[binding];
         }
@@ -628,6 +656,15 @@ void Renderer::CreateGrassPipeline() {
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
 
+    VkBool32 enableLod = lod ? VK_TRUE : VK_FALSE;
+    VkSpecializationMapEntry lodEntry = { 0, 0, sizeof(enableLod) };
+    VkSpecializationInfo lodInfo = {};
+    lodInfo.mapEntryCount = 1;
+    lodInfo.pMapEntries = &lodEntry;
+    lodInfo.dataSize = sizeof(enableLod);
+    lodInfo.pData = &enableLod;
+    tescShaderStageInfo.pSpecializationInfo = &lodInfo;
+
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, tescShaderStageInfo, teseShaderStageInfo, fragShaderStageInfo };
 
     // --- Set up fixed-function stages ---
@@ -824,13 +861,18 @@ void Renderer::CreateComputePipeline() {
 }
 
 void Renderer::CreateFrameResources() {
-    imageViews.resize(swapChain->GetCount());
-
-    for (uint32_t i = 0; i < swapChain->GetCount(); i++) {
+    imageViews.resize(offscreen ? 1 : swapChain->GetCount());
+    if (offscreen) {
+        VkExtent2D extent = swapChain->GetVkExtent();
+        Image::Create(device, extent.width, extent.height, swapChain->GetVkImageFormat(), VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            colorImage, colorImageMemory);
+    }
+    for (uint32_t i = 0; i < imageViews.size(); i++) {
         // --- Create an image view for each swap chain image ---
         VkImageViewCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = swapChain->GetVkImage(i);
+        createInfo.image = offscreen ? colorImage : swapChain->GetVkImage(i);
 
         // Specify how the image data should be interpreted
         createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -875,8 +917,8 @@ void Renderer::CreateFrameResources() {
 
     
     // CREATE FRAMEBUFFERS
-    framebuffers.resize(swapChain->GetCount());
-    for (size_t i = 0; i < swapChain->GetCount(); i++) {
+    framebuffers.resize(imageViews.size());
+    for (size_t i = 0; i < imageViews.size(); i++) {
         std::vector<VkImageView> attachments = {
             imageViews[i],
             depthImageView
@@ -907,6 +949,10 @@ void Renderer::DestroyFrameResources() {
         vkDestroyImageView(logicalDevice, imageViews[i], nullptr);
     }
 
+    if (offscreen) {
+        vkDestroyImage(logicalDevice, colorImage, nullptr);
+        vkFreeMemory(logicalDevice, colorImageMemory, nullptr);
+    }
     vkDestroyImageView(logicalDevice, depthImageView, nullptr);
     vkDestroyImage(logicalDevice, depthImage, nullptr);
     vkFreeMemory(logicalDevice, depthImageMemory, nullptr);
@@ -950,6 +996,20 @@ void Renderer::RecordComputeCommandBuffer() {
         throw std::runtime_error("Failed to begin recording compute command buffer");
     }
 
+    if (computeQueries != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(computeCommandBuffer, computeQueries, 0, 2);
+        vkCmdWriteTimestamp(computeCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, computeQueries, 0);
+    }
+
+    // Make the previous simulation writes available before updating the same blades.
+    VkMemoryBarrier simulationBarrier = {};
+    simulationBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    simulationBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    simulationBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(computeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+        1, &simulationBarrier, 0, nullptr, 0, nullptr);
+
     // Bind to the compute pipeline
     vkCmdBindPipeline(computeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
 
@@ -961,9 +1021,27 @@ void Renderer::RecordComputeCommandBuffer() {
 
     for (uint32_t i = 0; i < computeDescriptorSets.size(); ++i) {
         vkCmdBindDescriptorSets(computeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 2, 1, &computeDescriptorSets[i], 0, nullptr);
-        vkCmdDispatch(computeCommandBuffer, (NUM_BLADES + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+        // Reset before the dispatch: a shader barrier only synchronizes one workgroup.
+        VkBuffer counter = scene->GetBlades()[i]->GetNumBladesBuffer();
+        vkCmdFillBuffer(computeCommandBuffer, counter, 0, sizeof(uint32_t), 0);
+        VkBufferMemoryBarrier counterBarrier = {};
+        counterBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        counterBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        counterBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        counterBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        counterBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        counterBarrier.buffer = counter;
+        counterBarrier.offset = 0;
+        counterBarrier.size = sizeof(uint32_t);
+        vkCmdPipelineBarrier(computeCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &counterBarrier, 0, nullptr);
+        uint32_t count = scene->GetBlades()[i]->GetBladeCount();
+        vkCmdDispatch(computeCommandBuffer, (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
     }
 
+    if (computeQueries != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(computeCommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, computeQueries, 1);
+    }
     // ~ End recording ~
     if (vkEndCommandBuffer(computeCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to record compute command buffer");
@@ -971,7 +1049,7 @@ void Renderer::RecordComputeCommandBuffer() {
 }
 
 void Renderer::RecordCommandBuffers() {
-    commandBuffers.resize(swapChain->GetCount());
+    commandBuffers.resize(framebuffers.size());
 
     // Specify the command pool and number of buffers to allocate
     VkCommandBufferAllocateInfo allocInfo = {};
@@ -994,6 +1072,11 @@ void Renderer::RecordCommandBuffers() {
         // ~ Start recording ~
         if (vkBeginCommandBuffer(commandBuffers[i], &beginInfo) != VK_SUCCESS) {
             throw std::runtime_error("Failed to begin recording command buffer");
+        }
+
+        if (graphicsQueries != VK_NULL_HANDLE) {
+            vkCmdResetQueryPool(commandBuffers[i], graphicsQueries, 0, 2);
+            vkCmdWriteTimestamp(commandBuffers[i], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, graphicsQueries, 0);
         }
 
         // Begin the render pass
@@ -1050,6 +1133,9 @@ void Renderer::RecordCommandBuffers() {
 
         // End render pass
         vkCmdEndRenderPass(commandBuffers[i]);
+        if (graphicsQueries != VK_NULL_HANDLE) {
+            vkCmdWriteTimestamp(commandBuffers[i], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, graphicsQueries, 1);
+        }
 
         // ~ End recording ~
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
@@ -1058,10 +1144,10 @@ void Renderer::RecordCommandBuffers() {
     }
 }
 
-void Renderer::Frame() {
-    if (!swapChain->Acquire()) {
+bool Renderer::Frame() {
+    if (!offscreen && !swapChain->Acquire()) {
         RecreateFrameResources();
-        return;
+        return false;
     }
 
     VkSubmitInfo computeSubmitInfo = {};
@@ -1085,33 +1171,62 @@ void Renderer::Frame() {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
     };
-    submitInfo.waitSemaphoreCount = 2;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
+    if (graphicsQueries != VK_NULL_HANDLE) {
+        // Begin graphics timing after both waits, excluding compute and image acquisition.
+        waitStages[0] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        waitStages[1] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+    submitInfo.waitSemaphoreCount = offscreen ? 1 : 2;
+    submitInfo.pWaitSemaphores = waitSemaphores + (offscreen ? 1 : 0);
+    submitInfo.pWaitDstStageMask = waitStages + (offscreen ? 1 : 0);
 
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[swapChain->GetIndex()];
+    submitInfo.pCommandBuffers = &commandBuffers[offscreen ? 0 : swapChain->GetIndex()];
 
     VkSemaphore signalSemaphores[] = { swapChain->GetRenderFinishedVkSemaphore() };
-    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.signalSemaphoreCount = offscreen ? 0 : 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
     if (vkQueueSubmit(device->GetQueue(QueueFlags::Graphics), 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
         throw std::runtime_error("Failed to submit draw command buffer");
     }
 
-    if (!swapChain->Present()) {
+    if (!offscreen && !swapChain->Present()) {
         RecreateFrameResources();
     }
 
     // The starter shares buffers and semaphores across frames. Finish this frame
     // before the next camera/time update or compute write reuses them.
     vkDeviceWaitIdle(logicalDevice);
+    if (computeQueries != VK_NULL_HANDLE) {
+        auto elapsed = [&](VkQueryPool queries, uint32_t bits) {
+            uint64_t ticks[2];
+            if (vkGetQueryPoolResults(logicalDevice, queries, 0, 2, sizeof(ticks), ticks,
+                sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to read GPU timestamps");
+            }
+            uint64_t mask = bits == 64 ? ~uint64_t(0) : (uint64_t(1) << bits) - 1;
+            return double((ticks[1] - ticks[0]) & mask) * timestampPeriod / 1000000.0;
+        };
+        computeMilliseconds = elapsed(computeQueries, computeTimestampBits);
+        graphicsMilliseconds = elapsed(graphicsQueries, graphicsTimestampBits);
+    }
+    return true;
+}
+
+uint32_t Renderer::ReadBackBlades(bool verify, const std::string& dumpPath) const {
+    uint32_t visible = 0;
+    for (Blades* blades : scene->GetBlades()) {
+        visible += blades->ReadBack(graphicsCommandPool, verify, dumpPath);
+    }
+    return visible;
 }
 
 Renderer::~Renderer() {
     vkDeviceWaitIdle(logicalDevice);
 
+    vkDestroyQueryPool(logicalDevice, computeQueries, nullptr);
+    vkDestroyQueryPool(logicalDevice, graphicsQueries, nullptr);
     vkDestroySemaphore(logicalDevice, computeFinishedSemaphore, nullptr);
     vkDestroyDescriptorSetLayout(logicalDevice, computeDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(logicalDevice, grassDescriptorSetLayout, nullptr);
@@ -1137,4 +1252,73 @@ Renderer::~Renderer() {
     DestroyFrameResources();
     vkDestroyCommandPool(logicalDevice, computeCommandPool, nullptr);
     vkDestroyCommandPool(logicalDevice, graphicsCommandPool, nullptr);
+}
+
+void Renderer::SaveFrame(const std::string& path) const {
+    if (!offscreen) throw std::runtime_error("Frame capture requires an offscreen run");
+    VkFormat format = swapChain->GetVkImageFormat();
+    bool bgra = format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB;
+    if (!bgra && format != VK_FORMAT_R8G8B8A8_UNORM && format != VK_FORMAT_R8G8B8A8_SRGB) {
+        throw std::runtime_error("Capture requires an 8-bit RGBA or BGRA color target");
+    }
+    VkExtent2D extent = swapChain->GetVkExtent();
+    VkDeviceSize size = VkDeviceSize(extent.width) * extent.height * 4;
+    VkBuffer staging;
+    VkDeviceMemory memory;
+    BufferUtils::CreateBuffer(device, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging, memory);
+    VkCommandBufferAllocateInfo alloc = {};
+    alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc.commandPool = graphicsCommandPool;
+    alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc.commandBufferCount = 1;
+    VkCommandBuffer command;
+    vkAllocateCommandBuffers(logicalDevice, &alloc, &command);
+    VkCommandBufferBeginInfo begin = {};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(command, &begin);
+    VkMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 1, &barrier, 0, nullptr, 0, nullptr);
+    VkBufferImageCopy region = {};
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.layerCount = 1;
+    region.imageExtent = { extent.width, extent.height, 1 };
+    vkCmdCopyImageToBuffer(command, colorImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &region);
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+        0, 1, &barrier, 0, nullptr, 0, nullptr);
+    vkEndCommandBuffer(command);
+    VkSubmitInfo submit = {};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &command;
+    if (vkQueueSubmit(device->GetQueue(QueueFlags::Graphics), 1, &submit, VK_NULL_HANDLE) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to submit frame capture");
+    }
+    vkQueueWaitIdle(device->GetQueue(QueueFlags::Graphics));
+    void* mapped;
+    if (vkMapMemory(logicalDevice, memory, 0, size, 0, &mapped) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to map frame capture");
+    }
+    const unsigned char* pixels = static_cast<unsigned char*>(mapped);
+    std::vector<unsigned char> rgb(static_cast<size_t>(extent.width) * extent.height * 3);
+    for (size_t i = 0; i < rgb.size() / 3; ++i) {
+        rgb[i * 3] = pixels[i * 4 + (bgra ? 2 : 0)];
+        rgb[i * 3 + 1] = pixels[i * 4 + 1];
+        rgb[i * 3 + 2] = pixels[i * 4 + (bgra ? 0 : 2)];
+    }
+    vkUnmapMemory(logicalDevice, memory);
+    vkFreeCommandBuffers(logicalDevice, graphicsCommandPool, 1, &command);
+    vkDestroyBuffer(logicalDevice, staging, nullptr);
+    vkFreeMemory(logicalDevice, memory, nullptr);
+    std::ofstream file(path, std::ios::binary);
+    file << "P6\n" << extent.width << ' ' << extent.height << "\n255\n";
+    file.write(reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
+    if (!file) throw std::runtime_error("Failed to write frame capture");
 }

@@ -8,7 +8,7 @@
 class Renderer {
 public:
     Renderer() = delete;
-    Renderer(Device* device, SwapChain* swapChain, Scene* scene, Camera* camera);
+    Renderer(Device* device, SwapChain* swapChain, Scene* scene, Camera* camera, bool benchmark = false, bool offscreen = false, bool lod = true);
     ~Renderer();
 
     void CreateCommandPools();
@@ -40,7 +40,11 @@ public:
     void RecordCommandBuffers();
     void RecordComputeCommandBuffer();
 
-    void Frame();
+    bool Frame();
+    double GetComputeMilliseconds() const { return computeMilliseconds; }
+    double GetGraphicsMilliseconds() const { return graphicsMilliseconds; }
+    uint32_t ReadBackBlades(bool verify, const std::string& dumpPath = "") const;
+    void SaveFrame(const std::string& path) const;
 
 private:
     Device* device;
@@ -48,6 +52,10 @@ private:
     SwapChain* swapChain;
     Scene* scene;
     Camera* camera;
+    bool offscreen;
+    bool lod;
+    VkImage colorImage = VK_NULL_HANDLE;
+    VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
 
     VkCommandPool graphicsCommandPool;
     VkCommandPool computeCommandPool;
@@ -68,6 +76,13 @@ private:
     std::vector<VkDescriptorSet> grassDescriptorSets;
     std::vector<VkDescriptorSet> computeDescriptorSets;
     VkSemaphore computeFinishedSemaphore;
+    VkQueryPool computeQueries = VK_NULL_HANDLE;
+    VkQueryPool graphicsQueries = VK_NULL_HANDLE;
+    uint32_t computeTimestampBits = 0;
+    uint32_t graphicsTimestampBits = 0;
+    float timestampPeriod = 0.0f;
+    double computeMilliseconds = 0.0;
+    double graphicsMilliseconds = 0.0;
 
     VkPipelineLayout graphicsPipelineLayout;
     VkPipelineLayout grassPipelineLayout;

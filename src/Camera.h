@@ -2,6 +2,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <string>
 #include "Device.h"
 
 struct CameraBufferObject {
@@ -30,4 +31,5 @@ public:
     
     void UpdateOrbit(float deltaX, float deltaY, float deltaZ);
     void UpdateAspectRatio(float aspectRatio);
+    void SetView(const std::string& name);
 };

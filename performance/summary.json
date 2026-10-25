@@ -1,0 +1,634 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3070",
+  "driver": "616.56",
+  "build": "Release",
+  "resolution": [
+    640,
+    480
+  ],
+  "fixed_dt": 0.016666666666666666,
+  "wind_strength": 6,
+  "date": "2026-10-25",
+  "results": [
+    {
+      "view": "close",
+      "blades": 8192,
+      "culling": "all",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        2789,
+        2789
+      ],
+      "compute_ms": {
+        "mean": 0.007024444444444444,
+        "median": 0.007008,
+        "p95": 0.007584
+      },
+      "graphics_ms": {
+        "mean": 0.033446666666666666,
+        "median": 0.03344,
+        "p95": 0.034496
+      },
+      "frame_ms": {
+        "mean": 0.18137833333333334,
+        "median": 0.1751,
+        "p95": 0.2342
+      },
+      "gpu_ms": {
+        "mean": 0.04047111111111111,
+        "median": 0.040448,
+        "p95": 0.041728
+      }
+    },
+    {
+      "view": "close",
+      "blades": 8192,
+      "culling": "distance",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        7061,
+        7061
+      ],
+      "compute_ms": {
+        "mean": 0.007568711111111111,
+        "median": 0.007552,
+        "p95": 0.00832
+      },
+      "graphics_ms": {
+        "mean": 0.038026222222222225,
+        "median": 0.037952,
+        "p95": 0.038912
+      },
+      "frame_ms": {
+        "mean": 0.199865,
+        "median": 0.1861,
+        "p95": 0.2703
+      },
+      "gpu_ms": {
+        "mean": 0.04559493333333333,
+        "median": 0.045568,
+        "p95": 0.046784
+      }
+    },
+    {
+      "view": "close",
+      "blades": 8192,
+      "culling": "frustum",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        4211,
+        4211
+      ],
+      "compute_ms": {
+        "mean": 0.006728355555555556,
+        "median": 0.00672,
+        "p95": 0.007456
+      },
+      "graphics_ms": {
+        "mean": 0.041498933333333335,
+        "median": 0.041552,
+        "p95": 0.042208
+      },
+      "frame_ms": {
+        "mean": 0.17143305555555555,
+        "median": 0.1645,
+        "p95": 0.1954
+      },
+      "gpu_ms": {
+        "mean": 0.048227288888888886,
+        "median": 0.048256,
+        "p95": 0.049312
+      }
+    },
+    {
+      "view": "close",
+      "blades": 8192,
+      "culling": "none",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        8192,
+        8192
+      ],
+      "compute_ms": {
+        "mean": 0.007317155555555555,
+        "median": 0.007296,
+        "p95": 0.008064
+      },
+      "graphics_ms": {
+        "mean": 0.04258,
+        "median": 0.042656,
+        "p95": 0.043424
+      },
+      "frame_ms": {
+        "mean": 0.19487888888888888,
+        "median": 0.18745,
+        "p95": 0.2441
+      },
+      "gpu_ms": {
+        "mean": 0.04989715555555556,
+        "median": 0.049856000000000004,
+        "p95": 0.051072000000000006
+      }
+    },
+    {
+      "view": "close",
+      "blades": 8192,
+      "culling": "orientation",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        6724,
+        6724
+      ],
+      "compute_ms": {
+        "mean": 0.007272622222222222,
+        "median": 0.007264,
+        "p95": 0.008096
+      },
+      "graphics_ms": {
+        "mean": 0.03705671111111111,
+        "median": 0.03696,
+        "p95": 0.038016
+      },
+      "frame_ms": {
+        "mean": 0.17495722222222224,
+        "median": 0.167,
+        "p95": 0.2242
+      },
+      "gpu_ms": {
+        "mean": 0.04432933333333333,
+        "median": 0.044288,
+        "p95": 0.045504
+      }
+    },
+    {
+      "view": "close",
+      "blades": 65536,
+      "culling": "all",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        22327,
+        22327
+      ],
+      "compute_ms": {
+        "mean": 0.02633422222222222,
+        "median": 0.02624,
+        "p95": 0.027552
+      },
+      "graphics_ms": {
+        "mean": 0.1768598222222222,
+        "median": 0.175792,
+        "p95": 0.178624
+      },
+      "frame_ms": {
+        "mean": 0.3428616666666667,
+        "median": 0.32605,
+        "p95": 0.4898
+      },
+      "gpu_ms": {
+        "mean": 0.20319404444444444,
+        "median": 0.202112,
+        "p95": 0.205152
+      }
+    },
+    {
+      "view": "close",
+      "blades": 65536,
+      "culling": "distance",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        56287,
+        56287
+      ],
+      "compute_ms": {
+        "mean": 0.031146933333333335,
+        "median": 0.03104,
+        "p95": 0.032768
+      },
+      "graphics_ms": {
+        "mean": 0.21365697777777778,
+        "median": 0.21262399999999998,
+        "p95": 0.220896
+      },
+      "frame_ms": {
+        "mean": 0.3995522222222222,
+        "median": 0.37424999999999997,
+        "p95": 0.5934
+      },
+      "gpu_ms": {
+        "mean": 0.2448039111111111,
+        "median": 0.244,
+        "p95": 0.252
+      }
+    },
+    {
+      "view": "close",
+      "blades": 65536,
+      "culling": "frustum",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        33783,
+        33783
+      ],
+      "compute_ms": {
+        "mean": 0.027051555555555554,
+        "median": 0.027008,
+        "p95": 0.028608
+      },
+      "graphics_ms": {
+        "mean": 0.24874382222222222,
+        "median": 0.24657600000000002,
+        "p95": 0.259424
+      },
+      "frame_ms": {
+        "mean": 0.4241561111111111,
+        "median": 0.4114,
+        "p95": 0.5016
+      },
+      "gpu_ms": {
+        "mean": 0.2757953777777778,
+        "median": 0.27352,
+        "p95": 0.28656
+      }
+    },
+    {
+      "view": "close",
+      "blades": 65536,
+      "culling": "none",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        65536,
+        65536
+      ],
+      "compute_ms": {
+        "mean": 0.032170755555555555,
+        "median": 0.03216,
+        "p95": 0.033824
+      },
+      "graphics_ms": {
+        "mean": 0.2526273777777778,
+        "median": 0.250624,
+        "p95": 0.264224
+      },
+      "frame_ms": {
+        "mean": 0.43144638888888887,
+        "median": 0.4083,
+        "p95": 0.7093
+      },
+      "gpu_ms": {
+        "mean": 0.2847981333333333,
+        "median": 0.283136,
+        "p95": 0.296736
+      }
+    },
+    {
+      "view": "close",
+      "blades": 65536,
+      "culling": "orientation",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        54129,
+        54129
+      ],
+      "compute_ms": {
+        "mean": 0.0308152,
+        "median": 0.03072,
+        "p95": 0.032192
+      },
+      "graphics_ms": {
+        "mean": 0.2061152,
+        "median": 0.204704,
+        "p95": 0.210912
+      },
+      "frame_ms": {
+        "mean": 0.3923802777777778,
+        "median": 0.3813,
+        "p95": 0.4589
+      },
+      "gpu_ms": {
+        "mean": 0.2369304,
+        "median": 0.23568,
+        "p95": 0.241952
+      }
+    },
+    {
+      "view": "close",
+      "blades": 262144,
+      "culling": "all",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        88997,
+        88997
+      ],
+      "compute_ms": {
+        "mean": 0.09876524444444444,
+        "median": 0.098912,
+        "p95": 0.101184
+      },
+      "graphics_ms": {
+        "mean": 0.7359266666666666,
+        "median": 0.728864,
+        "p95": 0.814144
+      },
+      "frame_ms": {
+        "mean": 0.992445,
+        "median": 0.9686,
+        "p95": 1.2843
+      },
+      "gpu_ms": {
+        "mean": 0.8346919111111111,
+        "median": 0.8282240000000001,
+        "p95": 0.913184
+      }
+    },
+    {
+      "view": "close",
+      "blades": 262144,
+      "culling": "distance",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        225062,
+        225062
+      ],
+      "compute_ms": {
+        "mean": 0.1190032,
+        "median": 0.11928,
+        "p95": 0.121824
+      },
+      "graphics_ms": {
+        "mean": 0.9542473777777778,
+        "median": 0.950384,
+        "p95": 1.0312
+      },
+      "frame_ms": {
+        "mean": 1.2271805555555555,
+        "median": 1.20105,
+        "p95": 1.5257
+      },
+      "gpu_ms": {
+        "mean": 1.0732505777777779,
+        "median": 1.068912,
+        "p95": 1.149408
+      }
+    },
+    {
+      "view": "close",
+      "blades": 262144,
+      "culling": "frustum",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        135209,
+        135209
+      ],
+      "compute_ms": {
+        "mean": 0.10557431111111111,
+        "median": 0.105792,
+        "p95": 0.10832
+      },
+      "graphics_ms": {
+        "mean": 1.1967504,
+        "median": 1.2009919999999998,
+        "p95": 1.386112
+      },
+      "frame_ms": {
+        "mean": 1.5088047222222223,
+        "median": 1.43675,
+        "p95": 1.7435
+      },
+      "gpu_ms": {
+        "mean": 1.3023247111111111,
+        "median": 1.3056800000000002,
+        "p95": 1.487808
+      }
+    },
+    {
+      "view": "close",
+      "blades": 262144,
+      "culling": "none",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        262144,
+        262144
+      ],
+      "compute_ms": {
+        "mean": 0.12483884444444444,
+        "median": 0.125152,
+        "p95": 0.127584
+      },
+      "graphics_ms": {
+        "mean": 1.2235242666666666,
+        "median": 1.21544,
+        "p95": 1.444352
+      },
+      "frame_ms": {
+        "mean": 1.534305,
+        "median": 1.49295,
+        "p95": 1.9105
+      },
+      "gpu_ms": {
+        "mean": 1.3483631111111112,
+        "median": 1.340368,
+        "p95": 1.565792
+      }
+    },
+    {
+      "view": "close",
+      "blades": 262144,
+      "culling": "orientation",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        217088,
+        217088
+      ],
+      "compute_ms": {
+        "mean": 0.11821911111111111,
+        "median": 0.118592,
+        "p95": 0.1208
+      },
+      "graphics_ms": {
+        "mean": 0.8975461333333333,
+        "median": 0.891104,
+        "p95": 0.982592
+      },
+      "frame_ms": {
+        "mean": 1.2543541666666667,
+        "median": 1.241,
+        "p95": 1.5233
+      },
+      "gpu_ms": {
+        "mean": 1.0157652444444445,
+        "median": 1.009696,
+        "p95": 1.100448
+      }
+    },
+    {
+      "view": "overview",
+      "blades": 65536,
+      "culling": "all",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        38104,
+        38104
+      ],
+      "compute_ms": {
+        "mean": 0.028114133333333333,
+        "median": 0.028,
+        "p95": 0.029504
+      },
+      "graphics_ms": {
+        "mean": 0.18301733333333334,
+        "median": 0.18192,
+        "p95": 0.18336
+      },
+      "frame_ms": {
+        "mean": 0.33655111111111113,
+        "median": 0.31715000000000004,
+        "p95": 0.4377
+      },
+      "gpu_ms": {
+        "mean": 0.21113146666666666,
+        "median": 0.209792,
+        "p95": 0.21248
+      }
+    },
+    {
+      "view": "overview",
+      "blades": 65536,
+      "culling": "distance",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        39900,
+        39900
+      ],
+      "compute_ms": {
+        "mean": 0.02830888888888889,
+        "median": 0.028256,
+        "p95": 0.029728
+      },
+      "graphics_ms": {
+        "mean": 0.18910355555555555,
+        "median": 0.188416,
+        "p95": 0.190304
+      },
+      "frame_ms": {
+        "mean": 0.37494777777777777,
+        "median": 0.36285,
+        "p95": 0.4854
+      },
+      "gpu_ms": {
+        "mean": 0.21741244444444444,
+        "median": 0.21684799999999999,
+        "p95": 0.21936
+      }
+    },
+    {
+      "view": "overview",
+      "blades": 65536,
+      "culling": "frustum",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        65526,
+        65526
+      ],
+      "compute_ms": {
+        "mean": 0.03218808888888889,
+        "median": 0.032128,
+        "p95": 0.033856
+      },
+      "graphics_ms": {
+        "mean": 0.30446942222222223,
+        "median": 0.302192,
+        "p95": 0.30688
+      },
+      "frame_ms": {
+        "mean": 0.48088277777777777,
+        "median": 0.4551,
+        "p95": 0.7525
+      },
+      "gpu_ms": {
+        "mean": 0.3366575111111111,
+        "median": 0.334528,
+        "p95": 0.339424
+      }
+    },
+    {
+      "view": "overview",
+      "blades": 65536,
+      "culling": "none",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        65536,
+        65536
+      ],
+      "compute_ms": {
+        "mean": 0.03241804444444445,
+        "median": 0.032352,
+        "p95": 0.033632
+      },
+      "graphics_ms": {
+        "mean": 0.30360586666666667,
+        "median": 0.302752,
+        "p95": 0.307072
+      },
+      "frame_ms": {
+        "mean": 0.4728763888888889,
+        "median": 0.4549,
+        "p95": 0.6094
+      },
+      "gpu_ms": {
+        "mean": 0.33602391111111113,
+        "median": 0.335136,
+        "p95": 0.339936
+      }
+    },
+    {
+      "view": "overview",
+      "blades": 65536,
+      "culling": "orientation",
+      "runs": 2,
+      "samples": 360,
+      "final_visible": [
+        61824,
+        61824
+      ],
+      "compute_ms": {
+        "mean": 0.031860266666666665,
+        "median": 0.031808,
+        "p95": 0.03328
+      },
+      "graphics_ms": {
+        "mean": 0.2856739555555556,
+        "median": 0.285584,
+        "p95": 0.2888
+      },
+      "frame_ms": {
+        "mean": 0.4608788888888889,
+        "median": 0.44384999999999997,
+        "p95": 0.5578
+      },
+      "gpu_ms": {
+        "mean": 0.3175342222222222,
+        "median": 0.31742400000000004,
+        "p95": 0.321184
+      }
+    }
+  ]
+}

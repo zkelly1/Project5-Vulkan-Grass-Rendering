@@ -23,12 +23,12 @@ void Scene::AddBlades(Blades* blades) {
   this->blades.push_back(blades);
 }
 
-void Scene::UpdateTime() {
+void Scene::UpdateTime(float fixedDelta) {
     high_resolution_clock::time_point currentTime = high_resolution_clock::now();
     duration<float> nextDeltaTime = duration_cast<duration<float>>(currentTime - startTime);
     startTime = currentTime;
 
-    time.deltaTime = nextDeltaTime.count();
+    time.deltaTime = time.simulate ? glm::clamp(fixedDelta > 0.0f ? fixedDelta : nextDeltaTime.count(), 0.0f, 1.0f / 30.0f) : 0.0f;
     time.totalTime += time.deltaTime;
 
     memcpy(mappedData, &time, sizeof(Time));
@@ -42,4 +42,19 @@ Scene::~Scene() {
     vkUnmapMemory(device->GetVkDevice(), timeBufferMemory);
     vkDestroyBuffer(device->GetVkDevice(), timeBuffer, nullptr);
     vkFreeMemory(device->GetVkDevice(), timeBufferMemory, nullptr);
+}
+
+void Scene::SetSettings(uint32_t culling, bool simulate, float windStrength) {
+    time.culling = culling;
+    time.simulate = simulate ? 1 : 0;
+    time.windStrength = windStrength;
+    memcpy(mappedData, &time, sizeof(Time));
+}
+
+void Scene::ToggleCulling(uint32_t bit) {
+    time.culling ^= bit;
+}
+
+void Scene::ToggleSimulation() {
+    time.simulate = 1 - time.simulate;
 }
