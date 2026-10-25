@@ -5,6 +5,8 @@
 #include "Camera.h"
 #include "Scene.h"
 #include "Image.h"
+#include <cstdlib>
+#include <cstring>
 
 Device* device;
 SwapChain* swapChain;
@@ -56,7 +58,7 @@ namespace {
             previousX = xPosition;
             previousY = yPosition;
         } else if (rightMouseDown) {
-            double deltaZ = static_cast<float>((previousY - yPosition) * 0.05);
+            float deltaZ = static_cast<float>((previousY - yPosition) * 0.05);
 
             camera->UpdateOrbit(0.0f, 0.0f, deltaZ);
 
@@ -65,8 +67,16 @@ namespace {
     }
 }
 
-int main() {
-    static constexpr char* applicationName = "Vulkan Grass Rendering";
+int main(int argc, char** argv) {
+    int frameLimit = 0;
+    if (argc == 3 && std::strcmp(argv[1], "--frames") == 0) {
+        frameLimit = std::atoi(argv[2]);
+        if (frameLimit <= 0) return EXIT_FAILURE;
+    } else if (argc != 1) {
+        fprintf(stderr, "Usage: vulkan_grass_rendering [--frames positive-count]\n");
+        return EXIT_FAILURE;
+    }
+    static constexpr const char* applicationName = "Vulkan Grass Rendering";
     InitializeWindow(640, 480, applicationName);
 
     unsigned int glfwExtensionCount = 0;
@@ -94,7 +104,7 @@ int main() {
 
     VkCommandPoolCreateInfo transferPoolInfo = {};
     transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    transferPoolInfo.queueFamilyIndex = device->GetInstance()->GetQueueFamilyIndices()[QueueFlags::Transfer];
+    transferPoolInfo.queueFamilyIndex = device->GetInstance()->GetQueueFamilyIndices()[QueueFlags::Graphics];
     transferPoolInfo.flags = 0;
 
     VkCommandPool transferCommandPool;
@@ -143,24 +153,26 @@ int main() {
     glfwSetMouseButtonCallback(GetGLFWWindow(), mouseDownCallback);
     glfwSetCursorPosCallback(GetGLFWWindow(), mouseMoveCallback);
 
-    while (!ShouldQuit()) {
+    int frameCount = 0;
+    while (!ShouldQuit() && (frameLimit == 0 || frameCount < frameLimit)) {
         glfwPollEvents();
         scene->UpdateTime();
         renderer->Frame();
+        ++frameCount;
     }
 
     vkDeviceWaitIdle(device->GetVkDevice());
 
-    vkDestroyImage(device->GetVkDevice(), grassImage, nullptr);
-    vkFreeMemory(device->GetVkDevice(), grassImageMemory, nullptr);
-
+    delete renderer;
     delete scene;
     delete plane;
     delete blades;
     delete camera;
-    delete renderer;
+    vkDestroyImage(device->GetVkDevice(), grassImage, nullptr);
+    vkFreeMemory(device->GetVkDevice(), grassImageMemory, nullptr);
     delete swapChain;
     delete device;
+    vkDestroySurfaceKHR(instance->GetVkInstance(), surface, nullptr);
     delete instance;
     DestroyWindow();
     return 0;

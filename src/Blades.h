@@ -69,6 +69,9 @@ struct BladeDrawIndirect {
     uint32_t firstInstance;
 };
 
+static_assert(sizeof(Blade) == 64, "Blade must match the shader's four vec4 fields");
+static_assert(sizeof(BladeDrawIndirect) == sizeof(VkDrawIndirectCommand), "Indirect draw layout must match Vulkan");
+
 class Blades : public Model {
 private:
     VkBuffer bladesBuffer;
