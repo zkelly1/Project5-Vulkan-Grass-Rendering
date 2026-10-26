@@ -29,7 +29,7 @@ for (view, count, mode), group in sorted(groups.items()):
     results.append(result)
 output = {'gpu': 'NVIDIA GeForce RTX 3070', 'driver': '616.56', 'build': 'Release',
           'resolution': [640, 480], 'fixed_dt': 1 / 60, 'wind_strength': 6,
-          'date': '2026-10-25', 'results': results}
+          'collision': True, 'occlusion': False, 'lighting': 'sky and warm sunlight', 'date': '2026-10-25', 'results': results}
 (root / 'performance/summary.json').write_text(json.dumps(output, indent=2) + '\n')
 for view in ('close', 'overview'):
     print('\n' + view)

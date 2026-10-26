@@ -28,6 +28,7 @@ public:
     ~Camera();
 
     VkBuffer GetBuffer() const;
+    const CameraBufferObject& GetState() const { return cameraBufferObject; }
     
     void UpdateOrbit(float deltaX, float deltaY, float deltaZ);
     void UpdateAspectRatio(float aspectRatio);

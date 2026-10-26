@@ -211,7 +211,7 @@ void Renderer::CreateTimeDescriptorSetLayout() {
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     uboLayoutBinding.pImmutableSamplers = nullptr;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding };
@@ -620,6 +620,29 @@ void Renderer::CreateGraphicsPipeline() {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 
+    // A fullscreen triangle draws the sky at far depth and the analytic sphere at its surface depth.
+    VkShaderModule skyVertex = ShaderModule::Create("shaders/sky.vert.spv", logicalDevice);
+    VkShaderModule skyFragment = ShaderModule::Create("shaders/sky.frag.spv", logicalDevice);
+    shaderStages[0].module = skyVertex;
+    shaderStages[1].module = skyFragment;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    VkDescriptorSetLayout skyLayouts[] = { cameraDescriptorSetLayout, timeDescriptorSetLayout };
+    pipelineLayoutInfo.pSetLayouts = skyLayouts;
+    if (vkCreatePipelineLayout(logicalDevice, &pipelineLayoutInfo, nullptr, &skyPipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create sky layout");
+    }
+    pipelineInfo.layout = skyPipelineLayout;
+    if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &skyPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create sky pipeline");
+    }
+    vkDestroyShaderModule(logicalDevice, skyVertex, nullptr);
+    vkDestroyShaderModule(logicalDevice, skyFragment, nullptr);
+
     vkDestroyShaderModule(logicalDevice, vertShaderModule, nullptr);
     vkDestroyShaderModule(logicalDevice, fragShaderModule, nullptr);
 }
@@ -962,8 +985,10 @@ void Renderer::RecreateFrameResources() {
     VkExtent2D extent = swapChain->GetVkExtent();
     camera->UpdateAspectRatio(static_cast<float>(extent.width) / extent.height);
     vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+    vkDestroyPipeline(logicalDevice, skyPipeline, nullptr);
     vkDestroyPipeline(logicalDevice, grassPipeline, nullptr);
     vkDestroyPipelineLayout(logicalDevice, graphicsPipelineLayout, nullptr);
+    vkDestroyPipelineLayout(logicalDevice, skyPipelineLayout, nullptr);
     vkDestroyPipelineLayout(logicalDevice, grassPipelineLayout, nullptr);
     vkFreeCommandBuffers(logicalDevice, graphicsCommandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
 
@@ -1097,6 +1122,11 @@ void Renderer::RecordCommandBuffers() {
         vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipelineLayout, 0, 1, &cameraDescriptorSet, 0, nullptr);
 
         vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, skyPipeline);
+        VkDescriptorSet skySets[] = { cameraDescriptorSet, timeDescriptorSet };
+        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, skyPipelineLayout, 0, 2, skySets, 0, nullptr);
+        vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
 
         // Bind the graphics pipeline
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
@@ -1235,10 +1265,12 @@ Renderer::~Renderer() {
     vkFreeCommandBuffers(logicalDevice, computeCommandPool, 1, &computeCommandBuffer);
     
     vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+    vkDestroyPipeline(logicalDevice, skyPipeline, nullptr);
     vkDestroyPipeline(logicalDevice, grassPipeline, nullptr);
     vkDestroyPipeline(logicalDevice, computePipeline, nullptr);
 
     vkDestroyPipelineLayout(logicalDevice, graphicsPipelineLayout, nullptr);
+    vkDestroyPipelineLayout(logicalDevice, skyPipelineLayout, nullptr);
     vkDestroyPipelineLayout(logicalDevice, grassPipelineLayout, nullptr);
     vkDestroyPipelineLayout(logicalDevice, computePipelineLayout, nullptr);
 

@@ -85,10 +85,12 @@ private:
     double graphicsMilliseconds = 0.0;
 
     VkPipelineLayout graphicsPipelineLayout;
+    VkPipelineLayout skyPipelineLayout;
     VkPipelineLayout grassPipelineLayout;
     VkPipelineLayout computePipelineLayout;
 
     VkPipeline graphicsPipeline;
+    VkPipeline skyPipeline;
     VkPipeline grassPipeline;
     VkPipeline computePipeline;
 

@@ -58,3 +58,23 @@ void Scene::ToggleCulling(uint32_t bit) {
 void Scene::ToggleSimulation() {
     time.simulate = 1 - time.simulate;
 }
+
+void Scene::AdjustWind(float strengthChange, float angleChange) {
+    time.windStrength = glm::clamp(time.windStrength + strengthChange, 0.0f, 100.0f);
+    time.windAngle = glm::mod(time.windAngle + angleChange, 360.0f);
+}
+
+void Scene::MoveCollider(float x, float z) {
+    time.collider.x = glm::clamp(time.collider.x + x, -7.0f, 7.0f);
+    time.collider.z = glm::clamp(time.collider.z + z, -7.0f, 7.0f);
+}
+
+void Scene::SetInteraction(bool enabled, bool collision, bool occlusion) {
+    time.colliderEnabled = enabled;
+    time.collision = collision;
+    time.occlusion = occlusion;
+}
+
+void Scene::ToggleOcclusion() {
+    time.occlusion ^= 1;
+}

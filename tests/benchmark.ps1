@@ -27,7 +27,7 @@ try {
     foreach ($job in $jobs) {
         $name = "$($job.View)-$($job.Count)-$($job.Mode)-$($job.Repeat)"
         $arguments = @('--frames',"$($Samples + $Warmup)",'--warmup',"$Warmup",'--blades',"$($job.Count)",
-            '--culling',$job.Mode,'--view',$job.View,'--fixed-dt','0.016666667','--benchmark',"$output/$name.csv",'--offscreen','--no-lod')
+            '--culling',$job.Mode,'--view',$job.View,'--fixed-dt','0.016666667','--benchmark',"$output/$name.csv",'--offscreen','--no-occlusion','--no-lod')
         $batchLines += (@("$output/$name.stdout.log", "$output/$name.stderr.log") + $arguments) -join "`t"
     }
     $batchPath = Join-Path $root 'build/benchmarks.tsv'

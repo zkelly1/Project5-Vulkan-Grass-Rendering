@@ -36,7 +36,7 @@ try {
     foreach ($case in $cases) {
         $frames = if ($case.Frames) { $case.Frames } else { 120 }
         $arguments = @('--frames',"$frames",'--blades',"$($case.Count)",'--culling',$case.Mode,
-            '--view',$case.View,'--fixed-dt','0.016666667','--verify','--dump-blades',"$output/$($case.Name).bin",'--offscreen')
+            '--view',$case.View,'--fixed-dt','0.016666667','--verify','--dump-blades',"$output/$($case.Name).bin",'--offscreen','--no-collider')
         if ($case.Extra) { $arguments += $case.Extra }
         $batchLines += (@("$output/$($case.Name).stdout.log", "$output/$($case.Name).stderr.log") + $arguments) -join "`t"
     }

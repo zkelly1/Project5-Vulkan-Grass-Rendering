@@ -21,8 +21,19 @@ Camera* camera;
 Scene* scene;
 
 namespace {
+    int resizeCount = 0;
     void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+        if (key == GLFW_KEY_W) scene->MoveCollider(0.0f, -0.25f);
+        if (key == GLFW_KEY_S) scene->MoveCollider(0.0f, 0.25f);
+        if (key == GLFW_KEY_A) scene->MoveCollider(-0.25f, 0.0f);
+        if (key == GLFW_KEY_D) scene->MoveCollider(0.25f, 0.0f);
+        if (key == GLFW_KEY_UP) scene->AdjustWind(0.5f, 0.0f);
+        if (key == GLFW_KEY_DOWN) scene->AdjustWind(-0.5f, 0.0f);
+        if (key == GLFW_KEY_LEFT) scene->AdjustWind(0.0f, -5.0f);
+        if (key == GLFW_KEY_RIGHT) scene->AdjustWind(0.0f, 5.0f);
         if (action != GLFW_PRESS) return;
+        if (key == GLFW_KEY_4) scene->ToggleOcclusion();
         if (key == GLFW_KEY_1) scene->ToggleCulling(1);
         if (key == GLFW_KEY_2) scene->ToggleCulling(2);
         if (key == GLFW_KEY_3) scene->ToggleCulling(4);
@@ -40,6 +51,7 @@ namespace {
         vkDeviceWaitIdle(device->GetVkDevice());
         swapChain->Recreate();
         renderer->RecreateFrameResources();
+        ++resizeCount;
     }
 
     bool leftMouseDown = false;
@@ -97,6 +109,11 @@ int runRenderer(int argc, char** argv) {
     bool orbit = false;
     bool offscreen = false;
     bool lod = true;
+    bool windDemo = false;
+    bool checkControls = false;
+    float pausedTime = 0.0f;
+    bool colliderEnabled = true, collision = true, occlusion = true, collisionDemo = false;
+    float windAngle = 0.0f;
     std::string captureDirectory;
     int captureEvery = 4;
     float wind = 6.0f;
@@ -106,7 +123,7 @@ int runRenderer(int argc, char** argv) {
     auto usage = []() {
         printf("Usage: vulkan_grass_rendering [--frames N] [--blades N]\n"
             "  [--culling none|orientation|frustum|distance|all] [--static] [--wind strength]\n"
-            "  [--view overview|close|distant|away] [--fixed-dt seconds] [--orbit] [--no-lod]\n"
+            "  [--view overview|close|distant|away] [--fixed-dt seconds] [--orbit] [--no-lod] [--wind-direction degrees] [--wind-demo] [--no-collider] [--no-collision] [--no-occlusion] [--collision-demo] [--check-controls]\n"
             "  [--benchmark output.csv] [--warmup N] [--verify] [--dump-blades output.bin] [--offscreen] [--capture-dir directory] [--capture-every N]\n");
     };
     auto number = [](const char* value, double minimum, double maximum) {
@@ -122,6 +139,12 @@ int runRenderer(int argc, char** argv) {
         for (int i = 1; i < argc; ++i) {
             std::string option = argv[i];
             if (option == "--help") { usage(); return 0; }
+            if (option == "--check-controls") { checkControls = true; continue; }
+            if (option == "--no-collider") { colliderEnabled = false; continue; }
+            if (option == "--no-collision") { collision = false; continue; }
+            if (option == "--no-occlusion") { occlusion = false; continue; }
+            if (option == "--collision-demo") { collisionDemo = true; continue; }
+            if (option == "--wind-demo") { windDemo = true; continue; }
             if (option == "--no-lod") { lod = false; continue; }
             if (option == "--static") { simulate = false; continue; }
             if (option == "--verify") { verify = true; continue; }
@@ -137,6 +160,7 @@ int runRenderer(int argc, char** argv) {
                 if (option == "--capture-every") captureEvery = static_cast<int>(count);
                 if (option == "--blades") bladeCount = static_cast<uint32_t>(count);
             } else if (option == "--wind") wind = static_cast<float>(number(value, 0, 100));
+            else if (option == "--wind-direction") windAngle = static_cast<float>(number(value, -360, 360));
             else if (option == "--fixed-dt") fixedDelta = static_cast<float>(number(value, 0.0001, 1.0 / 30.0));
             else if (option == "--benchmark") benchmarkPath = value;
             else if (option == "--capture-dir") captureDirectory = value;
@@ -154,6 +178,7 @@ int runRenderer(int argc, char** argv) {
                 else throw std::runtime_error("Unknown culling mode");
             } else throw std::runtime_error("Unknown option");
         }
+        if (checkControls) { frameLimit = 120; fixedDelta = 1.0f / 60.0f; }
         if (!captureDirectory.empty()) {
             if (!benchmarkPath.empty()) throw std::runtime_error("Capture and benchmark must run separately");
             offscreen = true;
@@ -175,7 +200,7 @@ int runRenderer(int argc, char** argv) {
     if (!benchmarkPath.empty()) {
         benchmark.open(benchmarkPath);
         if (!benchmark) { fprintf(stderr, "Cannot open benchmark output\n"); return EXIT_FAILURE; }
-        benchmark << "blades,culling,view,wind,fixed_dt,simulate,lod,frame,simulation_seconds,compute_ms,graphics_ms,frame_ms\n";
+        benchmark << "blades,culling,view,wind,wind_angle,fixed_dt,simulate,lod,collider,collision,occlusion,frame,simulation_seconds,compute_ms,graphics_ms,frame_ms\n";
         benchmark << std::fixed << std::setprecision(6);
     }
     static constexpr const char* applicationName = "Vulkan Grass Rendering";
@@ -249,6 +274,8 @@ int runRenderer(int argc, char** argv) {
 
     scene = new Scene(device);
     scene->SetSettings(culling, simulate, wind);
+    scene->AdjustWind(0.0f, windAngle);
+    scene->SetInteraction(colliderEnabled, collision, occlusion);
     scene->AddModel(plane);
     scene->AddBlades(blades);
 
@@ -262,7 +289,66 @@ int runRenderer(int argc, char** argv) {
     int frameCount = 0;
     while (!ShouldQuit() && (frameLimit == 0 || frameCount < frameLimit)) {
         if (!offscreen) glfwPollEvents();
+        if (checkControls && frameCount == 10) {
+            auto require = [](bool value) { if (!value) throw std::runtime_error("Control check failed"); };
+            float originalWind = scene->GetSettings().windStrength;
+            for (int n = 0; n < 10; ++n) keyCallback(GetGLFWWindow(), GLFW_KEY_UP, 0, GLFW_REPEAT, 0);
+            require(scene->GetSettings().windStrength == originalWind + 5.0f);
+            for (int n = 0; n < 10; ++n) keyCallback(GetGLFWWindow(), GLFW_KEY_DOWN, 0, GLFW_REPEAT, 0);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_LEFT, 0, GLFW_PRESS, 0);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_RIGHT, 0, GLFW_PRESS, 0);
+            require(scene->GetSettings().windStrength == originalWind && scene->GetSettings().windAngle == windAngle);
+            float originalX = scene->GetSettings().collider.x;
+            keyCallback(GetGLFWWindow(), GLFW_KEY_D, 0, GLFW_REPEAT, 0);
+            require(scene->GetSettings().collider.x > originalX);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_A, 0, GLFW_PRESS, 0);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_4, 0, GLFW_PRESS, 0);
+            require(scene->GetSettings().occlusion == 0);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_4, 0, GLFW_PRESS, 0);
+            glm::mat4 before = camera->GetState().viewMatrix;
+            mouseDownCallback(GetGLFWWindow(), GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+            mouseMoveCallback(GetGLFWWindow(), previousX + 40, previousY + 10);
+            mouseDownCallback(GetGLFWWindow(), GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+            require(std::memcmp(&before, &camera->GetState().viewMatrix, sizeof(before)) != 0);
+            before = camera->GetState().viewMatrix;
+            mouseDownCallback(GetGLFWWindow(), GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS, 0);
+            mouseMoveCallback(GetGLFWWindow(), previousX, previousY + 30);
+            mouseDownCallback(GetGLFWWindow(), GLFW_MOUSE_BUTTON_RIGHT, GLFW_RELEASE, 0);
+            require(std::memcmp(&before, &camera->GetState().viewMatrix, sizeof(before)) != 0);
+            keyCallback(GetGLFWWindow(), GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
+            pausedTime = scene->GetSettings().totalTime;
+            resizeCount = 0;
+            glfwSetWindowSize(GetGLFWWindow(), 800, 600);
+        }
+        if (checkControls && frameCount == 30) {
+            if (scene->GetSettings().totalTime != pausedTime) throw std::runtime_error("Pause failed");
+            keyCallback(GetGLFWWindow(), GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
+            glfwSetWindowSize(GetGLFWWindow(), 640, 480);
+        }
+        if (checkControls && frameCount == 90) {
+            if (scene->GetSettings().totalTime <= pausedTime || resizeCount < 2) throw std::runtime_error("Resume or resize failed");
+            printf("Control checks passed: repeated wind keys, direction, sphere, occlusion, orbit, zoom, pause/resume, two resizes\n");
+        }
         if (orbit) camera->UpdateOrbit(0.25f, 0.0f, 0.0f);
+        if (windDemo) {
+            // Exercise the same updates as the arrow keys for repeatable captures.
+            if (frameCount == 60 || frameCount == 120) {
+                int key = frameCount == 60 ? GLFW_KEY_UP : GLFW_KEY_DOWN;
+                int presses = frameCount == 60 ? 20 : 28;
+                for (int i = 0; i < presses; ++i) keyCallback(GetGLFWWindow(), key, 0, GLFW_REPEAT, 0);
+                for (int i = 0; i < 18; ++i) keyCallback(GetGLFWWindow(), GLFW_KEY_RIGHT, 0, GLFW_REPEAT, 0);
+                printf("Wind demo: strength %.1f, direction %.0f\n", scene->GetSettings().windStrength, scene->GetSettings().windAngle);
+            }
+        }
+        if (collisionDemo) {
+            float target = 4.0f * std::sin(frameCount / 60.0f);
+            scene->MoveCollider(target - scene->GetSettings().collider.x, 0.0f);
+        }
+        const Time& current = scene->GetSettings();
+        char title[180];
+        std::snprintf(title, sizeof(title), "Grass | Wind %.1f, direction %.0f deg | Arrows: wind | Space: %s | WASD: sphere | 4: occlusion",
+            current.windStrength, current.windAngle, current.simulate ? "pause" : "resume");
+        glfwSetWindowTitle(GetGLFWWindow(), title);
         scene->UpdateTime(fixedDelta);
         auto start = std::chrono::steady_clock::now();
         if (!renderer->Frame()) continue;
@@ -270,7 +356,7 @@ int runRenderer(int argc, char** argv) {
         if (!benchmarkPath.empty() && frameCount >= warmup) {
             const Time& settings = scene->GetSettings();
             benchmark << bladeCount << ',' << settings.culling << ',' << view << ',' << settings.windStrength << ','
-                << fixedDelta << ',' << settings.simulate << ',' << lod << ',' << frameCount << ',' << settings.totalTime << ','
+                << settings.windAngle << ',' << fixedDelta << ',' << settings.simulate << ',' << lod << ',' << settings.colliderEnabled << ',' << settings.collision << ',' << settings.occlusion << ',' << frameCount << ',' << settings.totalTime << ','
                 << renderer->GetComputeMilliseconds() << ',' << renderer->GetGraphicsMilliseconds() << ',' << frameMilliseconds << '\n';
         }
         if (!captureDirectory.empty() && frameCount >= warmup && (frameCount - warmup) % captureEvery == 0) {

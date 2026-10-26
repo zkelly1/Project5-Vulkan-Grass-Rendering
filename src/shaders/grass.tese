@@ -19,6 +19,8 @@ layout(location = 3) in vec4 up[];
 
 layout(location = 0) out vec3 normal;
 layout(location = 1) out float bladeHeight;
+layout(location = 2) out vec3 worldPosition;
+layout(location = 3) out float variation;
 
 void main() {
     float u = gl_TessCoord.x;
@@ -42,5 +44,7 @@ void main() {
     if (dot(surfaceNormal, surfaceNormal) < 0.000001) surfaceNormal = cross(worldSide, mat3(model) * bladeUp);
     normal = normalize(surfaceNormal);
     bladeHeight = v;
+    worldPosition = (model * vec4(position, 1.0)).xyz;
+    variation = fract(sin(dot(p0.xz, vec2(12.9898, 78.233))) * 43758.5453);
     gl_Position = camera.proj * camera.view * model * vec4(position, 1.0);
 }

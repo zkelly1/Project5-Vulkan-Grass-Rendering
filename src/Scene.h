@@ -17,6 +17,11 @@ struct Time {
     float maxDistance = 40.0f;
     uint32_t distanceBuckets = 8;
     float orientationThreshold = 0.9f;
+    float windAngle = 0.0f;
+    uint32_t collision = 1;
+    uint32_t occlusion = 1;
+    uint32_t colliderEnabled = 1;
+    glm::vec4 collider = glm::vec4(0.0f, 1.5f, 0.0f, 1.5f);
 };
 
 class Scene {
@@ -51,5 +56,9 @@ public:
     void SetSettings(uint32_t culling, bool simulate, float windStrength);
     void ToggleCulling(uint32_t bit);
     void ToggleSimulation();
+    void MoveCollider(float x, float z);
+    void SetInteraction(bool enabled, bool collision, bool occlusion);
+    void ToggleOcclusion();
+    void AdjustWind(float strengthChange, float angleChange);
     const Time& GetSettings() const { return time; }
 };
