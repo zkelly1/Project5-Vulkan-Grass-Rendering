@@ -346,8 +346,9 @@ int runRenderer(int argc, char** argv) {
         }
         const Time& current = scene->GetSettings();
         char title[180];
-        std::snprintf(title, sizeof(title), "Grass | Wind %.1f, direction %.0f deg | Arrows: wind | Space: %s | WASD: sphere | 4: occlusion",
-            current.windStrength, current.windAngle, current.simulate ? "pause" : "resume");
+        std::snprintf(title, sizeof(title), "Grass | Wind %.1f / %.0f deg | Sphere %.1f, %.1f | Occlusion %s | %s",
+            current.windStrength, current.windAngle, current.collider.x, current.collider.z,
+            current.occlusion ? "on" : "off", current.simulate ? "running" : "paused");
         glfwSetWindowTitle(GetGLFWWindow(), title);
         scene->UpdateTime(fixedDelta);
         auto start = std::chrono::steady_clock::now();

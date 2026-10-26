@@ -16,9 +16,9 @@ and lighter tips. The default scene has 8,192 blades.
 
 ## Rendering stages
 
-I started by drawing the static Bézier blades, then added forces, then culling.
+I started by drawing the static BÃ©zier blades, then added forces, then culling.
 These captures use the same orbit and initial field with fixed eight-segment
-blades so the stages are directly comparable.
+blades and the collision sphere disabled, so the stages are directly comparable.
 
 | Static blades | Gravity, recovery, and wind | Simulation and all culling |
 | --- | --- | --- |
@@ -45,6 +45,9 @@ does not reset or freeze its motion.
 ## Interactive wind
 
 ![Changing the wind](img/wind-controls.gif)
+
+The window title also shows the sphere position, occlusion state, and whether
+simulation is paused.
 
 The up and down arrows change wind strength by 0.5, clamped between zero and 100.
 The left and right arrows rotate the wind by five degrees. Holding a key repeats
@@ -360,9 +363,11 @@ python tests/check-interaction.py
 
 `./tests/check-controls.ps1` runs `--check-controls`, which exercises repeated key callbacks, orbit and zoom callbacks,
 pause/resume, and actual window resizes from 640 by 480 to 800 by 600 and back.
-That presented Debug run passed synchronization validation. Desktop automation
-could not initialize, so this is an automated callback/window-event check, not a
-manual input-device check.
+That presented Debug run passed synchronization validation. On October 26, live
+UI checks also verified mouse orbit, maximize/restore, and clean window closure
+with no validation messages. Injected keyboard events did not change the controls
+in this GLFW build, so wind, movement, pause, and zoom are covered by the automated
+callback checks rather than a complete live input-device check.
 
 ## Current limits
 

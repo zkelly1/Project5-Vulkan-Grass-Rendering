@@ -11,7 +11,8 @@ comparisons = []
 def compare(reference, culled, repeat, label):
     def changed(left, right):
         diff = ImageChops.difference(Image.open(left), Image.open(right))
-        return sum(any(pixel) for pixel in diff.getdata())
+        data = diff.tobytes()
+        return sum(any(data[i:i+3]) for i in range(0, len(data), 3))
     count = changed(reference, culled)
     noise = changed(reference, repeat)
     # Atomic compaction can change the winner of equal-depth grass fragments.

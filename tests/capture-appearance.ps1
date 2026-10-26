@@ -14,7 +14,7 @@ $lines = @()
 foreach ($case in $cases) {
     $directory = Join-Path $output $case.Name
     New-Item -ItemType Directory -Force $directory | Out-Null
-    $arguments = @('--capture-dir',$directory,'--fixed-dt','0.016666667','--verify') + $case.Arguments
+    $arguments = @('--capture-dir',$directory,'--fixed-dt','0.016666667','--verify','--no-collider') + $case.Arguments
     $lines += (@("$output/$($case.Name).stdout.log","$output/$($case.Name).stderr.log") + $arguments) -join "`t"
 }
 # Exercise the ordinary swapchain too, after the offscreen captures.
